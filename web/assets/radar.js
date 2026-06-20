@@ -3,6 +3,24 @@ const state = { type: 'player', season: null, entity: null };
 const $ = id => document.getElementById(id);
 let chart = null;
 
+// 静态模式（GitHub Pages）vs 动态模式（Flask API）
+// 自动判断：尝试 /data/seasons.json 是否存在
+let STATIC_MODE = null;
+async function detectMode(){
+  if (STATIC_MODE !== null) return STATIC_MODE;
+  try {
+    const r = await fetch('./data/seasons.json', { method: 'HEAD' });
+    STATIC_MODE = r.ok;
+  } catch(e) { STATIC_MODE = false; }
+  return STATIC_MODE;
+}
+async function jget(staticPath, apiPath){
+  const isStatic = await detectMode();
+  const url = isStatic ? './data/' + staticPath : '/api/' + apiPath;
+  return fetch(url).then(r => r.json());
+}
+const safe = s => s.replace(/\//g,'_').replace(/:/g,'_');
+
 // ==== 初始化 ====
 init();
 async function init(){
@@ -31,14 +49,18 @@ async function init(){
 }
 
 async function loadSeasons(){
-  // 取所有有数据的赛季（按 league_id 一线优先）
-  const leagues = await fetch('/api/leagues').then(r => r.json());
-  const allSeasons = [];
-  for (const lg of leagues){
-    const ss = await fetch(`/api/seasons?league_id=${lg.id}`).then(r => r.json());
-    ss.forEach(s => allSeasons.push(s));
+  const isStatic = await detectMode();
+  let allSeasons;
+  if (isStatic){
+    allSeasons = await jget('seasons.json');
+  } else {
+    const leagues = await fetch('/api/leagues').then(r => r.json());
+    allSeasons = [];
+    for (const lg of leagues){
+      const ss = await fetch(`/api/seasons?league_id=${lg.id}`).then(r => r.json());
+      ss.forEach(s => allSeasons.push(s));
+    }
   }
-  // 优先 LCK Cup
   allSeasons.sort((a,b) => (a.league_id+a.id).localeCompare(b.league_id+b.id));
   const sel = $('sel-season');
   sel.innerHTML = allSeasons.map(s => `<option value="${s.id}">${s.id}</option>`).join('');
@@ -49,28 +71,46 @@ async function loadSeasons(){
 
 async function reloadEntities(){
   const sel = $('sel-entity');
+  const isStatic = await detectMode();
+  let list;
   if (state.type === 'player'){
-    const list = await fetch(`/api/players?season_id=${state.season}`).then(r => r.json());
+    if (isStatic){
+      const data = await jget(`season/${safe(state.season)}/list.json`);
+      list = data.players.map(p => ({...p, current_handle: p.name}));
+    } else {
+      list = await fetch(`/api/players?season_id=${state.season}`).then(r => r.json());
+    }
     sel.innerHTML = list.map(p =>
       `<option value="${p.id}">${p.current_handle} (${p.position}) · ${p.team_name||''} · #${p.r_position}</option>`
     ).join('');
-    state.entity = list[0]?.id;
   } else {
-    const list = await fetch(`/api/teams?season_id=${state.season}`).then(r => r.json());
+    if (isStatic){
+      const data = await jget(`season/${safe(state.season)}/list.json`);
+      list = data.teams;
+    } else {
+      list = await fetch(`/api/teams?season_id=${state.season}`).then(r => r.json());
+    }
     sel.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-    state.entity = list[0]?.id;
   }
+  state.entity = list[0]?.id;
   if (state.entity) await renderSubject();
 }
 
 // ==== 渲染主体 ====
 async function renderSubject(){
   if (!state.entity) return;
-  const url = state.type === 'player'
-    ? `/api/player/${encodeURIComponent(state.entity)}?season_id=${state.season}`
-    : `/api/team/${encodeURIComponent(state.entity)}?season_id=${state.season}`;
-  const data = await fetch(url).then(r => r.json());
-  if (data.error){ console.warn(data); return; }
+  const isStatic = await detectMode();
+  let data;
+  if (isStatic){
+    const kind = state.type;
+    data = await jget(`season/${safe(state.season)}/${kind}/${safe(state.entity)}.json`);
+  } else {
+    const url = state.type === 'player'
+      ? `/api/player/${encodeURIComponent(state.entity)}?season_id=${state.season}`
+      : `/api/team/${encodeURIComponent(state.entity)}?season_id=${state.season}`;
+    data = await fetch(url).then(r => r.json());
+  }
+  if (!data || data.error){ console.warn(data); return; }
 
   // 标题/标签
   $('t-name').textContent = data.name;
