@@ -6,6 +6,7 @@
 const state = { type:'player', season:null, entity:null };
 const $ = id => document.getElementById(id);
 let chart = null;
+const PULSE = { raf:null, period:1300 };   // 满点脉冲状态(R3, overlay 画布)
 
 // 静态(GitHub Pages)/动态(Flask) 自动判别
 let STATIC_MODE = null;
@@ -159,13 +160,10 @@ function drawRadar(dims){
 
   if (chart){
     // —— R4 平滑切换：复用实例，过渡期间暂停脉冲，避免卡顿 —— //
-    PULSE.active = false;                 // 先停脉冲
     chart.data.labels = radarMeta.labels;
     chart.data.datasets[0].data = radarMeta.self;
     chart.data.datasets[1].data = radarMeta.avg;
     chart.update();                       // easeInOutCubic 补间（见 options）
-    // 过渡结束后再开启脉冲
-    setTimeout(()=>{ PULSE.active = true; }, 640);
     return;
   }
 
@@ -203,41 +201,6 @@ function drawRadar(dims){
     }
   };
 
-  // —— R3 满点脉冲插件：value>=阈值 的端点持续脉冲高亮 —— //
-  const PULSE_THRESHOLD = 90;
-  const pulsePlugin = {
-    id:'pulse',
-    afterDatasetsDraw(c){
-      if (!PULSE.active) return;
-      const meta = c.getDatasetMeta(0);   // self 数据集
-      if (!meta || !meta.data) return;
-      const ct = c.ctx;
-      const t = (performance.now() % PULSE.period) / PULSE.period; // 0..1
-      // 脉冲缓动：sin 平滑呼吸
-      const phase = Math.sin(t * Math.PI * 2) * 0.5 + 0.5;          // 0..1
-      ct.save();
-      for (let i=0;i<meta.data.length;i++){
-        if (radarMeta.self[i] < PULSE_THRESHOLD) continue;
-        const pt = meta.data[i];
-        const baseR = 4;
-        const ringR = baseR + 4 + phase * 8;       // 外圈扩散
-        const alpha = (1 - phase) * 0.55;          // 越扩越淡
-        // 外脉冲圈
-        ct.beginPath();
-        ct.arc(pt.x, pt.y, ringR, 0, Math.PI*2);
-        ct.fillStyle = `rgba(59,91,165,${alpha.toFixed(3)})`;
-        ct.fill();
-        // 实心亮点
-        ct.beginPath();
-        ct.arc(pt.x, pt.y, baseR + phase*1.5, 0, Math.PI*2);
-        ct.fillStyle = C('--blue');
-        ct.fill();
-        ct.lineWidth = 1.5; ct.strokeStyle = '#fff'; ct.stroke();
-      }
-      ct.restore();
-    }
-  };
-
   chart = new Chart(ctx,{
     type:'radar',
     data:{
@@ -268,22 +231,11 @@ function drawRadar(dims){
         pointLabels:{ display:false }
       }}
     },
-    plugins:[ axisLabelPlugin, pulsePlugin ],
+    plugins:[ axisLabelPlugin ],
   });
 
-  // 启动脉冲 RAF 循环（仅触发重绘，不重算布局）；限频 ~33fps 省电
-  PULSE.active = true;
-  PULSE.lastDraw = 0;
-  function loop(ts){
-    if (chart && PULSE.active && ts - PULSE.lastDraw > 30){
-      if (radarMeta.self.some(v=>v>=PULSE_THRESHOLD)){
-        try { chart.update('none'); } catch(e){}   // 'none' = 无动画重绘
-        PULSE.lastDraw = ts;
-      }
-    }
-    PULSE.raf = requestAnimationFrame(loop);
-  }
-  if (!PULSE.raf) requestAnimationFrame(loop);
+  // 启动 overlay 脉冲循环：在独立画布上绘制，绝不触碰 Chart 状态
+  startPulse();
 }
 
 function roundRect(c,x,y,w,h,r){
@@ -293,3 +245,55 @@ function roundRect(c,x,y,w,h,r){
   c.quadraticCurveTo(x,y+h,x,y+h-r); c.lineTo(x,y+r);
   c.quadraticCurveTo(x,y,x+r,y); c.closePath();
 }
+
+// ============================================================
+// R3 满点脉冲：独立 overlay 画布，读取 Chart 点坐标但不修改 Chart
+// 不调用 chart.update，因此绝不会打断雷达进入/切换动画
+// ============================================================
+function startPulse(){
+  if (PULSE.raf) return;            // 只启动一次
+  const fx = document.getElementById('radar-fx');
+  if (!fx) return;
+  const fctx = fx.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const blue = css.getPropertyValue('--blue').trim();
+  const THRESHOLD = 90;
+
+  function frame(){
+    PULSE.raf = requestAnimationFrame(frame);
+    if (!chart) return;
+    // 让 overlay 像素尺寸与 chart 主画布完全一致
+    const need = chart.canvas;
+    if (fx.width !== need.width || fx.height !== need.height){
+      fx.width = need.width; fx.height = need.height;
+    }
+    fctx.setTransform(1,0,0,1,0,0);
+    fctx.clearRect(0,0,fx.width, fx.height);
+
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+    const t = (performance.now() % PULSE.period) / PULSE.period;
+    const phase = Math.sin(t * Math.PI * 2) * 0.5 + 0.5;   // 0..1 呼吸
+    const dpr = (need.width / need.clientWidth) || 1;       // 用于半径缩放
+
+    for (let i=0;i<meta.data.length;i++){
+      if ((radarMeta.self[i]||0) < THRESHOLD) continue;
+      const pt = meta.data[i];
+      if (!pt || pt.x == null) continue;
+      const x = pt.x, y = pt.y;          // meta.data 已是设备像素坐标
+      const ringR = (5 + phase * 9) * dpr;
+      const alpha = (1 - phase) * 0.5;
+      fctx.beginPath();
+      fctx.arc(x, y, ringR, 0, Math.PI*2);
+      fctx.fillStyle = `rgba(59,91,165,${alpha.toFixed(3)})`;
+      fctx.fill();
+      fctx.beginPath();
+      fctx.arc(x, y, (3.5 + phase*1.5) * dpr, 0, Math.PI*2);
+      fctx.fillStyle = blue;
+      fctx.fill();
+      fctx.lineWidth = 1.5 * dpr; fctx.strokeStyle = '#fff'; fctx.stroke();
+    }
+  }
+  frame();
+}
+
