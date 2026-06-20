@@ -72,7 +72,7 @@ body{
 
 /* ---------- 雷达卡 ---------- */
 .radar-card{background:var(--card);border-radius:var(--r-lg);padding:var(--sp-4) var(--sp-2) var(--sp-3);box-shadow:var(--shadow-card);margin-bottom:var(--sp-3);}
-.legend{display:flex;justify-content:center;gap:var(--sp-6);font-size:var(--fs-body);margin-bottom:var(--sp-2);}
+.legend{display:flex;justify-content:center;gap:var(--sp-6);font-size:var(--fs-body);margin-bottom:0;}
 .legend span{display:flex;align-items:center;gap:var(--sp-2);color:var(--ink-2);}
 .legend i{width:20px;height:11px;border-radius:3px;display:inline-block;}
 .legend .l-blue{background:var(--blue-fill);border:1.5px solid var(--blue);}
@@ -104,6 +104,7 @@ body{
 .formula-note .fn-body{margin-top:var(--sp-3);}
 .formula-note .fn-item{padding:var(--sp-2) 0;border-top:1px solid var(--line);}
 .formula-note .fn-item:first-child{border-top:0;}
+.formula-note .fn-en{color:var(--accent);font-weight:700;margin-right:var(--sp-2);font-size:var(--fs-body);}
 .formula-note .fn-dim{color:var(--blue);font-weight:600;}
 .formula-note .fn-field{font-family:var(--font-serif);font-style:italic;color:var(--orange);}
 .formula-note .fn-foot{margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--line);color:var(--muted);}

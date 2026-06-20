@@ -7,6 +7,11 @@ const state = { type:'player', season:null, entity:null };
 const $ = id => document.getElementById(id);
 let chart = null;
 const PULSE = { raf:null, period:1300 };   // 满点脉冲状态(R3, overlay 画布)
+// 维度英文短名（轴标签用，避免中文挤占雷达空间；中文名+原理见底部公式区）
+const DIM_EN = {
+  d_teamfight:'Teamfight', d_laning:'Laning', d_macro:'Macro',
+  d_mechanics:'Mechanics', d_consistency:'Consistency', d_meta_adapt:'Adaptation',
+};
 
 // 静态(GitHub Pages)/动态(Flask) 自动判别
 let STATIC_MODE = null;
@@ -134,8 +139,11 @@ function renderMeta(data){
 function renderFormula(fn){
   if (!fn){ $('formula-note').style.display='none'; return; }
   $('formula-note').style.display='';
+  const EN = {团战决策:'Teamfight',线上压制:'Laning',长线运营:'Macro',
+              操作上限:'Mechanics',心态稳定:'Consistency',版本适应:'Adaptation'};
   const items = fn.items.map(it=>`
     <div class="fn-item">
+      <span class="fn-en">${EN[it.label]||''}</span>
       <span class="fn-dim">${it.label}</span>
       <span class="fn-field">（${it.fields}）</span><br>
       ${it.formula}
@@ -152,6 +160,7 @@ let radarMeta = { labels:[], fields:[], self:[], avg:[], ranks:[] };
 function drawRadar(dims){
   radarMeta = {
     labels: dims.map(d=>d.label),
+    en:     dims.map(d=>DIM_EN[d.key]||d.label),
     fields: dims.map(d=>d.fields||''),
     self:   dims.map(d=>d.value),
     avg:    dims.map(d=>d.avg),
@@ -176,7 +185,7 @@ function drawRadar(dims){
     id:'axisLabel',
     afterDraw(c){
       const r=c.scales.r; if(!r) return;
-      const ct=c.ctx; const cx=r.xCenter, cy=r.yCenter, rad=r.drawingArea+26;
+      const ct=c.ctx; const cx=r.xCenter, cy=r.yCenter, rad=r.drawingArea+22;
       ct.save();
       for(let i=0;i<radarMeta.labels.length;i++){
         const ang=r.getIndexAngle(i)-Math.PI/2;
@@ -184,18 +193,19 @@ function drawRadar(dims){
         ct.textAlign='center'; ct.textBaseline='middle';
         const rank=radarMeta.ranks[i];
         if (rank){
-          ct.font='600 10px '+C('--font-sans');
-          const w=ct.measureText(rank).width+12, ry=py-30;
-          ct.fillStyle=C('--accent-bg'); roundRect(ct,px-w/2,ry-8,w,16,8); ct.fill();
+          ct.font='600 9px '+C('--font-sans');
+          const w=ct.measureText(rank).width+10, ry=py-22;
+          ct.fillStyle=C('--accent-bg'); roundRect(ct,px-w/2,ry-7,w,14,7); ct.fill();
           ct.fillStyle=C('--accent'); ct.fillText(rank,px,ry);
         }
-        ct.font='600 13px '+C('--font-sans');
-        ct.fillStyle=C('--ink'); ct.fillText(radarMeta.labels[i],px,py-8);
-        ct.font='400 9px '+C('--font-sans');
-        ct.fillStyle=C('--muted'); ct.fillText(radarMeta.fields[i],px,py+6);
+        // 维度英文短名（更紧凑，不戳进雷达）
+        ct.font='600 12px '+C('--font-sans');
+        ct.fillStyle=C('--ink'); ct.fillText(radarMeta.en[i],px,py-3);
+        // 双数值（蓝=本人 橙=均值）
         ct.font='600 11px '+C('--font-sans');
-        ct.fillStyle=C('--blue');   ct.fillText(radarMeta.self[i],px-20,py+21);
-        ct.fillStyle=C('--orange'); ct.fillText(radarMeta.avg[i], px+20,py+21);
+        ct.fillStyle=C('--blue');   ct.fillText(radarMeta.self[i],px-16,py+12);
+        ct.fillStyle=C('--muted');  ct.fillText('/',px,py+12);
+        ct.fillStyle=C('--orange'); ct.fillText(radarMeta.avg[i], px+16,py+12);
       }
       ct.restore();
     }
@@ -221,7 +231,7 @@ function drawRadar(dims){
       // R4：更顺滑的缓动，统一过渡
       animation:{ duration:620, easing:'easeInOutCubic' },
       animations:{ r:{ type:'number', easing:'easeInOutCubic', duration:620 } },
-      layout:{ padding:{ top:40, bottom:40, left:54, right:54 } },
+      layout:{ padding:{ top:34, bottom:34, left:46, right:46 } },
       plugins:{ legend:{display:false}, tooltip:{enabled:false} },
       scales:{ r:{
         min:0, max:100,
@@ -262,36 +272,38 @@ function startPulse(){
   function frame(){
     PULSE.raf = requestAnimationFrame(frame);
     if (!chart) return;
-    // 让 overlay 像素尺寸与 chart 主画布完全一致
-    const need = chart.canvas;
-    if (fx.width !== need.width || fx.height !== need.height){
-      fx.width = need.width; fx.height = need.height;
+    const main = chart.canvas;
+    const cssW = main.clientWidth, cssH = main.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    // overlay 设备像素尺寸对齐主画布，并用 dpr 缩放，使绘图用 CSS 坐标
+    if (fx.width !== Math.round(cssW*dpr) || fx.height !== Math.round(cssH*dpr)){
+      fx.width = Math.round(cssW*dpr); fx.height = Math.round(cssH*dpr);
+      fx.style.width = cssW+'px'; fx.style.height = cssH+'px';
     }
-    fctx.setTransform(1,0,0,1,0,0);
-    fctx.clearRect(0,0,fx.width, fx.height);
+    fctx.setTransform(dpr,0,0,dpr,0,0);
+    fctx.clearRect(0,0,cssW,cssH);
 
     const meta = chart.getDatasetMeta(0);
     if (!meta || !meta.data) return;
     const t = (performance.now() % PULSE.period) / PULSE.period;
     const phase = Math.sin(t * Math.PI * 2) * 0.5 + 0.5;   // 0..1 呼吸
-    const dpr = (need.width / need.clientWidth) || 1;       // 用于半径缩放
 
     for (let i=0;i<meta.data.length;i++){
       if ((radarMeta.self[i]||0) < THRESHOLD) continue;
       const pt = meta.data[i];
       if (!pt || pt.x == null) continue;
-      const x = pt.x, y = pt.y;          // meta.data 已是设备像素坐标
-      const ringR = (5 + phase * 9) * dpr;
+      const x = pt.x, y = pt.y;          // Chart.js 点坐标为 CSS 像素
+      const ringR = 5 + phase * 9;
       const alpha = (1 - phase) * 0.5;
       fctx.beginPath();
       fctx.arc(x, y, ringR, 0, Math.PI*2);
       fctx.fillStyle = `rgba(59,91,165,${alpha.toFixed(3)})`;
       fctx.fill();
       fctx.beginPath();
-      fctx.arc(x, y, (3.5 + phase*1.5) * dpr, 0, Math.PI*2);
+      fctx.arc(x, y, 3.5 + phase*1.5, 0, Math.PI*2);
       fctx.fillStyle = blue;
       fctx.fill();
-      fctx.lineWidth = 1.5 * dpr; fctx.strokeStyle = '#fff'; fctx.stroke();
+      fctx.lineWidth = 1.5; fctx.strokeStyle = '#fff'; fctx.stroke();
     }
   }
   frame();
