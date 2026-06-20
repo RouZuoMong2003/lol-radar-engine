@@ -137,6 +137,61 @@ def player_dimensions(raw: dict) -> dict:
         "_newchamp": new_champ * 100,
     }
 
+# 按位置差异化的维度权重表（详见 docs/PROMPT-position-and-anim.md）
+# 共用同一批二级字段输入(_kp/_gd_n/...)，仅各维度内部权重随定位调整。
+# 设计依据：不同分路职责不同 → 评判侧重不同。
+POSITION_DIM_FORMULA = {
+    # 上单：线上压制、操作、抗压(心态)为主；团战中等
+    "top": {
+        "d_teamfight":   [(0.45,"_kp"),(0.35,"_mitig_n"),(0.20,"_first_res")],
+        "d_laning":      [(0.55,"_gd_n"),(0.30,"_csd_n"),(0.15,"_xpd_n")],
+        "d_macro":       [(0.30,"_vspm_n"),(0.20,"_wcpm_n"),(0.20,"_egshare_n"),(0.30,"_first_tow")],
+        "d_mechanics":   [(0.45,"_kda_n"),(0.30,"_dpm_n"),(0.15,"_dshare_n"),(0.10,"_multi_n")],
+        "d_consistency": [(0.45,"_winrate"),(0.35,"_comeback"),(0.20,"_dstab")],
+        "d_meta_adapt":  [(0.50,"_pool"),(0.30,"_latest"),(0.20,"_newchamp")],
+    },
+    # 打野：团战节奏、运营(视野/资源)、版本为主；线上弱化
+    "jng": {
+        "d_teamfight":   [(0.40,"_kp"),(0.25,"_mitig_n"),(0.35,"_first_res")],
+        "d_laning":      [(0.40,"_gd_n"),(0.30,"_csd_n"),(0.30,"_xpd_n")],
+        "d_macro":       [(0.40,"_vspm_n"),(0.30,"_wcpm_n"),(0.10,"_egshare_n"),(0.20,"_first_tow")],
+        "d_mechanics":   [(0.45,"_kda_n"),(0.25,"_dpm_n"),(0.15,"_dshare_n"),(0.15,"_multi_n")],
+        "d_consistency": [(0.50,"_winrate"),(0.30,"_comeback"),(0.20,"_dstab")],
+        "d_meta_adapt":  [(0.45,"_pool"),(0.35,"_latest"),(0.20,"_newchamp")],
+    },
+    # 中单：操作、线上、团战均衡carry型
+    "mid": {
+        "d_teamfight":   [(0.40,"_kp"),(0.30,"_mitig_n"),(0.30,"_first_res")],
+        "d_laning":      [(0.50,"_gd_n"),(0.30,"_csd_n"),(0.20,"_xpd_n")],
+        "d_macro":       [(0.35,"_vspm_n"),(0.25,"_wcpm_n"),(0.20,"_egshare_n"),(0.20,"_first_tow")],
+        "d_mechanics":   [(0.35,"_kda_n"),(0.35,"_dpm_n"),(0.20,"_dshare_n"),(0.10,"_multi_n")],
+        "d_consistency": [(0.50,"_winrate"),(0.30,"_comeback"),(0.20,"_dstab")],
+        "d_meta_adapt":  [(0.50,"_pool"),(0.30,"_latest"),(0.20,"_newchamp")],
+    },
+    # 下路：输出、线上、经济占比为主；视野弱化
+    "bot": {
+        "d_teamfight":   [(0.45,"_kp"),(0.20,"_mitig_n"),(0.35,"_first_res")],
+        "d_laning":      [(0.50,"_gd_n"),(0.35,"_csd_n"),(0.15,"_xpd_n")],
+        "d_macro":       [(0.20,"_vspm_n"),(0.15,"_wcpm_n"),(0.45,"_egshare_n"),(0.20,"_first_tow")],
+        "d_mechanics":   [(0.30,"_kda_n"),(0.40,"_dpm_n"),(0.20,"_dshare_n"),(0.10,"_multi_n")],
+        "d_consistency": [(0.50,"_winrate"),(0.30,"_comeback"),(0.20,"_dstab")],
+        "d_meta_adapt":  [(0.50,"_pool"),(0.30,"_latest"),(0.20,"_newchamp")],
+    },
+    # 辅助：团战、运营(视野/控眼)、心态为主；操作/线上弱化
+    "sup": {
+        "d_teamfight":   [(0.50,"_kp"),(0.30,"_mitig_n"),(0.20,"_first_res")],
+        "d_laning":      [(0.50,"_gd_n"),(0.20,"_csd_n"),(0.30,"_xpd_n")],
+        "d_macro":       [(0.45,"_vspm_n"),(0.40,"_wcpm_n"),(0.05,"_egshare_n"),(0.10,"_first_tow")],
+        "d_mechanics":   [(0.55,"_kda_n"),(0.10,"_dpm_n"),(0.10,"_dshare_n"),(0.25,"_multi_n")],
+        "d_consistency": [(0.45,"_winrate"),(0.35,"_comeback"),(0.20,"_dstab")],
+        "d_meta_adapt":  [(0.50,"_pool"),(0.30,"_latest"),(0.20,"_newchamp")],
+    },
+}
+
+def dim_formula_for(position: str):
+    """按位置返回维度权重表，未知位置回退 mid。"""
+    return POSITION_DIM_FORMULA.get(position, POSITION_DIM_FORMULA["mid"])
+
 PLAYER_DIM_FORMULA = {
     # dim_key: [(weight, raw_key), ...]
     "d_teamfight":   [(0.40, "_kp"),       (0.30, "_mitig_n"),  (0.30, "_first_res")],
@@ -237,6 +292,34 @@ TEAM_DIM_FIELDS = {
     "d_consistency":"胜率 · 选手均值",
     "d_meta_adapt": "五人版本均值",
 }
+
+def dim_meta_for(position: str):
+    """按位置返回维度展示元数据(label+fields)，体现差异化侧重。
+    fields 文案随位置变化，让用户直观看到不同定位的评判侧重。"""
+    base = {k: dict(v) for k, v in DIM_META.items()}
+    overrides = {
+        "top": {
+            "d_laning":    "金差@15 · 补刀差(强权重)",
+            "d_consistency":"胜率 · 抗压逆风",
+        },
+        "jng": {
+            "d_teamfight": "KP% · 首资源参与(强权重)",
+            "d_macro":     "视野 · 控眼 · 资源",
+            "d_laning":    "Gank前期差@15",
+        },
+        "bot": {
+            "d_mechanics": "DPM · 输出占比(强权重)",
+            "d_macro":     "经济占比EGS(强权重) · 视野",
+        },
+        "sup": {
+            "d_macro":     "视野vspm · 控眼wcpm(强权重)",
+            "d_teamfight": "KP%(强权重) · 减伤",
+            "d_mechanics": "KDA · 参团(弱化输出)",
+        },
+    }
+    for dk, txt in overrides.get(position, {}).items():
+        base[dk]["fields"] = txt
+    return base
 
 NORMALIZE_NOTE = (
     "所有维度端点为 0–100 整数：同赛区、同位置选手分组后做 z-score 标准化，"

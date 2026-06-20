@@ -39,11 +39,13 @@ def main():
                     v = it["_dim_inputs"][fld]
                     it["_dim_inputs"][fld + "_n"] = M.zscore_to_100(v, samples)
 
-            # 2.2 合成每个维度的 raw 分（0~100 区间的加权和）
+            # 2.2 合成每个维度的 raw 分（按位置差异化权重）
             for it in items:
                 di = it["_dim_inputs"]
+                pos = it.get("position", "mid")
+                formula = M.dim_formula_for(pos)
                 it["_dim_raw"] = {}
-                for dim_key, terms in M.PLAYER_DIM_FORMULA.items():
+                for dim_key, terms in formula.items():
                     it["_dim_raw"][dim_key] = sum(w * di[k] for w, k in terms)
                 # LPL 线上压制降级：raw 设为组中性，后续拉伸会落在中段
                 if not di.get("_laning_ok", True):

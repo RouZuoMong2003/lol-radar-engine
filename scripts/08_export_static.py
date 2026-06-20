@@ -22,10 +22,11 @@ def write(name, obj):
         json.dump(obj, f, ensure_ascii=False, separators=(",",":"))
     return p.stat().st_size
 
-def build_dims(rec, avg, ranks, is_team=False):
+def build_dims(rec, avg, ranks, is_team=False, position="mid"):
+    pos_meta = M.dim_meta_for(position) if not is_team else M.DIM_META
     out = []
     for key, label in DIM_LABELS.items():
-        meta = M.DIM_META.get(key, {})
+        meta = pos_meta.get(key, {})
         fields = M.TEAM_DIM_FIELDS.get(key) if is_team else meta.get("fields", "")
         d = {"key":key, "label":label, "fields":fields,
              "value": rec[key] if rec[key] is not None else 0,
@@ -35,10 +36,11 @@ def build_dims(rec, avg, ranks, is_team=False):
         out.append(d)
     return out
 
-def formula_block(is_team=False):
-    """第 7 点：维度计算原理，导出到每个 RadarSubject。"""
+def formula_block(is_team=False, position="mid"):
+    """第 7 点：维度计算原理，导出到每个 RadarSubject。按位置差异化 fields。"""
+    pos_meta = M.dim_meta_for(position) if not is_team else M.DIM_META
     items = []
-    for key, meta in M.DIM_META.items():
+    for key, meta in pos_meta.items():
         items.append({
             "label": meta["label"],
             "fields": (M.TEAM_DIM_FIELDS.get(key) if is_team else meta["fields"]),
@@ -109,8 +111,8 @@ def main():
                     "season_rating":{"value":ps["season_rating"],"rank":ps["r_position"],
                                      "total":ps["total_in_pos"],"subtitle":"Season Rating"},
                 },
-                "dimensions": build_dims(ps, avg, ranks),
-                "formula_note": formula_block(is_team=False),
+                "dimensions": build_dims(ps, avg, ranks, position=pos),
+                "formula_note": formula_block(is_team=False, position=pos),
                 "raw":{
                     "team_name": tname,
                     "games":ps["games"],"wins":ps["wins"],"losses":ps["losses"],

@@ -158,11 +158,14 @@ function drawRadar(dims){
   };
 
   if (chart){
-    // —— 平滑更新：不销毁，改数据后 update —— //
+    // —— R4 平滑切换：复用实例，过渡期间暂停脉冲，避免卡顿 —— //
+    PULSE.active = false;                 // 先停脉冲
     chart.data.labels = radarMeta.labels;
     chart.data.datasets[0].data = radarMeta.self;
     chart.data.datasets[1].data = radarMeta.avg;
-    chart.update();   // 使用 options.animation 的补间
+    chart.update();                       // easeInOutCubic 补间（见 options）
+    // 过渡结束后再开启脉冲
+    setTimeout(()=>{ PULSE.active = true; }, 640);
     return;
   }
 
@@ -170,6 +173,7 @@ function drawRadar(dims){
   const css = getComputedStyle(document.documentElement);
   const C = n => css.getPropertyValue(n).trim();
 
+  // —— 轴标签插件：维度名 + 字段名 + 双数值 + 排名胶囊 —— //
   const axisLabelPlugin = {
     id:'axisLabel',
     afterDraw(c){
@@ -180,7 +184,6 @@ function drawRadar(dims){
         const ang=r.getIndexAngle(i)-Math.PI/2;
         const px=cx+Math.cos(ang)*rad, py=cy+Math.sin(ang)*rad;
         ct.textAlign='center'; ct.textBaseline='middle';
-        // 排名胶囊
         const rank=radarMeta.ranks[i];
         if (rank){
           ct.font='600 10px '+C('--font-sans');
@@ -188,16 +191,48 @@ function drawRadar(dims){
           ct.fillStyle=C('--accent-bg'); roundRect(ct,px-w/2,ry-8,w,16,8); ct.fill();
           ct.fillStyle=C('--accent'); ct.fillText(rank,px,ry);
         }
-        // 维度名
         ct.font='600 13px '+C('--font-sans');
         ct.fillStyle=C('--ink'); ct.fillText(radarMeta.labels[i],px,py-8);
-        // 字段名（第 3 点）
         ct.font='400 9px '+C('--font-sans');
         ct.fillStyle=C('--muted'); ct.fillText(radarMeta.fields[i],px,py+6);
-        // 双数值
         ct.font='600 11px '+C('--font-sans');
         ct.fillStyle=C('--blue');   ct.fillText(radarMeta.self[i],px-20,py+21);
         ct.fillStyle=C('--orange'); ct.fillText(radarMeta.avg[i], px+20,py+21);
+      }
+      ct.restore();
+    }
+  };
+
+  // —— R3 满点脉冲插件：value>=阈值 的端点持续脉冲高亮 —— //
+  const PULSE_THRESHOLD = 90;
+  const pulsePlugin = {
+    id:'pulse',
+    afterDatasetsDraw(c){
+      if (!PULSE.active) return;
+      const meta = c.getDatasetMeta(0);   // self 数据集
+      if (!meta || !meta.data) return;
+      const ct = c.ctx;
+      const t = (performance.now() % PULSE.period) / PULSE.period; // 0..1
+      // 脉冲缓动：sin 平滑呼吸
+      const phase = Math.sin(t * Math.PI * 2) * 0.5 + 0.5;          // 0..1
+      ct.save();
+      for (let i=0;i<meta.data.length;i++){
+        if (radarMeta.self[i] < PULSE_THRESHOLD) continue;
+        const pt = meta.data[i];
+        const baseR = 4;
+        const ringR = baseR + 4 + phase * 8;       // 外圈扩散
+        const alpha = (1 - phase) * 0.55;          // 越扩越淡
+        // 外脉冲圈
+        ct.beginPath();
+        ct.arc(pt.x, pt.y, ringR, 0, Math.PI*2);
+        ct.fillStyle = `rgba(59,91,165,${alpha.toFixed(3)})`;
+        ct.fill();
+        // 实心亮点
+        ct.beginPath();
+        ct.arc(pt.x, pt.y, baseR + phase*1.5, 0, Math.PI*2);
+        ct.fillStyle = C('--blue');
+        ct.fill();
+        ct.lineWidth = 1.5; ct.strokeStyle = '#fff'; ct.stroke();
       }
       ct.restore();
     }
@@ -220,7 +255,9 @@ function drawRadar(dims){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      animation:{ duration:550, easing:'easeOutQuart' },   // 平滑补间
+      // R4：更顺滑的缓动，统一过渡
+      animation:{ duration:620, easing:'easeInOutCubic' },
+      animations:{ r:{ type:'number', easing:'easeInOutCubic', duration:620 } },
       layout:{ padding:{ top:40, bottom:40, left:54, right:54 } },
       plugins:{ legend:{display:false}, tooltip:{enabled:false} },
       scales:{ r:{
@@ -231,8 +268,22 @@ function drawRadar(dims){
         pointLabels:{ display:false }
       }}
     },
-    plugins:[ axisLabelPlugin ],
+    plugins:[ axisLabelPlugin, pulsePlugin ],
   });
+
+  // 启动脉冲 RAF 循环（仅触发重绘，不重算布局）；限频 ~33fps 省电
+  PULSE.active = true;
+  PULSE.lastDraw = 0;
+  function loop(ts){
+    if (chart && PULSE.active && ts - PULSE.lastDraw > 30){
+      if (radarMeta.self.some(v=>v>=PULSE_THRESHOLD)){
+        try { chart.update('none'); } catch(e){}   // 'none' = 无动画重绘
+        PULSE.lastDraw = ts;
+      }
+    }
+    PULSE.raf = requestAnimationFrame(loop);
+  }
+  if (!PULSE.raf) requestAnimationFrame(loop);
 }
 
 function roundRect(c,x,y,w,h,r){
