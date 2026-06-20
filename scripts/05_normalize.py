@@ -24,25 +24,47 @@ def main():
             r["_league"] = league
             groups[(league, r["season_id"], r["position"])].append(r)
 
-        # 二、每组对 ZSCORE_FIELDS 做 z-score → 写到 r["_dim_inputs"][k+"_n"]
+        # 二、每组先用"原始二级值"直接加权合成 6 维度的 raw 分（不预先标准化分量），
+        #     然后对每个维度整体在组内做"分位数拉伸"，保证：
+        #       - 该维度第一名 → 100（满格）
+        #       - 强弱拉开（差异化），弱项可低至 ~20
+        #     详见 docs/PROMPT-radar-optimize.md
+        DIMS = list(M.PLAYER_DIM_FORMULA.keys())
+
         for grp_key, items in groups.items():
+            # 2.1 先把每个维度需要 z-score 的分量做组内标准化（让分量可比）
             for fld in M.ZSCORE_FIELDS:
                 samples = [it["_dim_inputs"][fld] for it in items]
                 for it in items:
                     v = it["_dim_inputs"][fld]
                     it["_dim_inputs"][fld + "_n"] = M.zscore_to_100(v, samples)
 
-        # 三、按公式合成 6 维度 + 综合评分，写回 player_season
+            # 2.2 合成每个维度的 raw 分（0~100 区间的加权和）
+            for it in items:
+                di = it["_dim_inputs"]
+                it["_dim_raw"] = {}
+                for dim_key, terms in M.PLAYER_DIM_FORMULA.items():
+                    it["_dim_raw"][dim_key] = sum(w * di[k] for w, k in terms)
+                # LPL 线上压制降级：raw 设为组中性，后续拉伸会落在中段
+                if not di.get("_laning_ok", True):
+                    it["_dim_raw"]["d_laning"] = None  # 标记降级
+
+            # 2.3 对每个维度整体做组内分位拉伸 → 最终 0-100
+            for dim_key in DIMS:
+                samples = [it["_dim_raw"][dim_key] for it in items
+                           if it["_dim_raw"].get(dim_key) is not None]
+                for it in items:
+                    rawv = it["_dim_raw"].get(dim_key)
+                    if rawv is None:           # 降级维度 → 固定中性 55
+                        it["_dim_raw"][dim_key + "_final"] = 55
+                    else:
+                        it["_dim_raw"][dim_key + "_final"] = M.percentile_stretch(rawv, samples)
+
+        # 三、写回 player_season
         c = db()
         for r in raw_list:
-            di = r["_dim_inputs"]
-            d = {}
-            for dim_key, terms in M.PLAYER_DIM_FORMULA.items():
-                d[dim_key] = round(sum(w * di[k] for w, k in terms))
-                d[dim_key] = max(0, min(100, d[dim_key]))
-            # LPL(partial) 缺分段差值 → 线上压制降级为赛区中性基线 60
-            if not di.get("_laning_ok", True):
-                d["d_laning"] = 60
+            dr = r["_dim_raw"]
+            d = {k: dr[k + "_final"] for k in DIMS}
             text, season_rating = M.scores(d.values(), r["win_rate"])
 
             c.execute("""

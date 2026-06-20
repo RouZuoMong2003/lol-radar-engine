@@ -17,13 +17,58 @@ def normalize_range(v, lo, hi):
     return clamp(round((v - lo) / (hi - lo) * 100))
 
 def zscore_to_100(value, samples: Sequence[float]) -> int:
-    """同组 z-score → 60 + z*15 → clamp[0,100]"""
+    """同组 z-score → 60 + z*15 → clamp[0,100]（旧版，保留兼容）"""
     if value is None or not samples: return 60
     samples = [s for s in samples if s is not None]
     if not samples: return 60
     m = mean(samples)
     s = pstdev(samples) or 1.0
     return clamp(round(60 + (value - m) / s * 15))
+
+
+def percentile_stretch(value, samples: Sequence[float],
+                       lo=15, hi=99, gamma=0.6,
+                       top_full=False, small_n=4) -> int:
+    """分位数拉伸：组内百分位排名 → pow 增益曲线 → [lo,hi]。
+    - 顶尖(分位≈1)自然落到 ~96-99，不强制满格(保留维度形状差异)。
+    - 弱项可低至 lo(~15-30)，强弱拉开 → 雷达呈清晰多边形。
+    - gamma<1 让中上段更舒展、强者更突出。
+    - 小样本组退化为 min-max 线性拉伸到 [40,95]。
+    详见 docs/PROMPT-radar-optimize.md
+    """
+    if value is None: return 60
+    vals = sorted(s for s in samples if s is not None)
+    n = len(vals)
+    if n == 0: return 60
+    if n == 1: return hi
+
+    vmin, vmax = vals[0], vals[-1]
+    # 小样本：线性拉伸，避免分位极端
+    if n < small_n:
+        if vmax == vmin: return 70
+        t = (value - vmin) / (vmax - vmin)
+        return clamp(round(40 + (95 - 40) * t))
+
+    # 百分位排名 p ∈ [0,1]：严格小于的数量 + 一半相等的数量
+    less = sum(1 for v in vals if v < value)
+    equal = sum(1 for v in vals if v == value)
+    p = (less + 0.5 * equal) / n  # 中位排名法
+    p_score = lo + (hi - lo) * (p ** gamma)
+
+    # min-max 绝对位置分量：即便同为第一名，raw 更高的维度更突出，
+    # 让"全维度第一"的统治级选手也呈现自身强弱形状。
+    if vmax > vmin:
+        t = (value - vmin) / (vmax - vmin)
+    else:
+        t = 0.5
+    mm_score = lo + (hi - lo) * t
+
+    # 混合：分位为主(70%) + 绝对位置(30%)
+    score = 0.7 * p_score + 0.3 * mm_score
+    # 组内最强者强制满格（仅当显式开启）
+    if top_full and value >= vmax:
+        score = 100
+    return clamp(round(score))
 
 # --- 选手维度（接收聚合后的 raw dict，返回原始分） ---
 # raw 内字段命名见 SPEC §1.1 + scripts/04 输出

@@ -44,6 +44,12 @@ def main():
         """).fetchall()
 
         n = 0
+        # 收集所有队伍的 raw 维度分，按赛季分组后做分位拉伸
+        from collections import defaultdict
+        rows_buf = []          # 每个元素: (ta, agg, raw_dims)
+        season_dims = defaultdict(lambda: defaultdict(list))  # season -> dim -> [raw]
+        DIMS = ["d_teamfight","d_laning","d_macro","d_mechanics","d_consistency","d_meta_adapt"]
+
         for ta in team_aggs:
             key = f"{ta['team_id']}|{ta['season_id']}"
             pa = player_avg.get(key)
@@ -51,7 +57,17 @@ def main():
                 continue
             agg = dict(ta)
             agg["win_rate"] = (ta["wins"] or 0) / ta["games"] if ta["games"] else 0
-            dims = M.team_dimensions(agg, dict(pa))
+            raw_dims = M.team_dimensions(agg, dict(pa))   # raw 维度分（未拉伸）
+            rows_buf.append((ta, agg, raw_dims))
+            for dk in DIMS:
+                season_dims[ta["season_id"]][dk].append(raw_dims[dk])
+
+        # 对每个赛季每个维度做组内分位拉伸 → 队伍第一名也满格
+        for ta, agg, raw_dims in rows_buf:
+            sid = ta["season_id"]
+            dims = {}
+            for dk in DIMS:
+                dims[dk] = M.percentile_stretch(raw_dims[dk], season_dims[sid][dk])
             text, sr = M.scores(dims.values(), agg["win_rate"])
 
             c.execute("""
