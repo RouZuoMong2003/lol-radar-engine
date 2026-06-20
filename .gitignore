@@ -1,0 +1,19 @@
+# SQLite 运行时
+db/*.db
+db/*.db-shm
+db/*.db-wal
+db/_stage_*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+
+# 日志/临时
+*.log
+*.tmp
