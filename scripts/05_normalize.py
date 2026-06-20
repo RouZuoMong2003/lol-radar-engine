@@ -40,6 +40,9 @@ def main():
             for dim_key, terms in M.PLAYER_DIM_FORMULA.items():
                 d[dim_key] = round(sum(w * di[k] for w, k in terms))
                 d[dim_key] = max(0, min(100, d[dim_key]))
+            # LPL(partial) 缺分段差值 → 线上压制降级为赛区中性基线 60
+            if not di.get("_laning_ok", True):
+                d["d_laning"] = 60
             text, season_rating = M.scores(d.values(), r["win_rate"])
 
             c.execute("""

@@ -17,6 +17,7 @@ COL_MAP = [
     ("date",         "date",         str),
     ("patch",        "patch",        str),
     ("playoffs",     "playoffs",     to_bool_int),
+    ("datacompleteness","datacompleteness", str),
     ("player_id",    "playerid",     lambda x: x or None),
     ("player_name",  "playername",   lambda x: x or None),
     ("team_id",      "teamid",       lambda x: x or None),
@@ -93,7 +94,10 @@ def main():
                 rdr = csv.DictReader(f)
                 for row in rdr:
                     rows_in += 1
-                    if row.get("datacompleteness") != "complete": continue
+                    # LPL 全为 partial，但关键二级字段(dpm/vspm/egshare/gspd)有值，
+                    # 故放开此过滤，仅排除完全无数据的行；完整度记入 datacompleteness 列。
+                    dc = row.get("datacompleteness")
+                    if dc not in ("complete", "partial"): continue
                     if row.get("league") not in ALLOWED_LEAGUES: continue
                     if row.get("position") not in ALLOWED_POSITIONS: continue
                     if not row.get("year") or not row.get("split"): continue

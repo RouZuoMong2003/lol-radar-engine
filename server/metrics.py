@@ -30,48 +30,57 @@ def zscore_to_100(value, samples: Sequence[float]) -> int:
 
 def player_dimensions(raw: dict) -> dict:
     """返回 6 个维度的"原始分"（未 z-score），后续在 05 步统一标准化。"""
-    g = max(raw.get("games", 0), 1)
-    K = raw.get("sum_kills", 0); D = raw.get("sum_deaths", 0); A = raw.get("sum_assists", 0)
-    TK = raw.get("sum_teamkills", 0)
+    def g0(key, d=0):
+        """安全取数：键不存在或值为 None 都返回默认值。"""
+        v = raw.get(key)
+        return d if v is None else v
+    g = max(g0("games", 0), 1)
+    K = g0("sum_kills"); D = g0("sum_deaths"); A = g0("sum_assists")
+    TK = g0("sum_teamkills")
     kp_rate = (K + A) / TK if TK else 0
     kda     = (K + A) / max(D, 1)
-    multikill = (raw.get("sum_double",0) + 2*raw.get("sum_triple",0)
-                 + 3*raw.get("sum_quad",0) + 5*raw.get("sum_penta",0)) / g
+    multikill = (g0("sum_double") + 2*g0("sum_triple")
+                 + 3*g0("sum_quad") + 5*g0("sum_penta")) / g
 
-    win_rate = raw.get("wins",0) / g
-    comeback = raw.get("comeback_rate", 0) or 0
-    death_stab = raw.get("death_stability", 0) or 0
-    pool_breadth = min(raw.get("champion_pool", 0) / 12.0, 1.0)
-    latest_wr = raw.get("latest_patch_winrate", win_rate) or 0
-    new_champ = raw.get("new_champ_score", 0) or 0
+    win_rate = g0("wins") / g
+    comeback = g0("comeback_rate")
+    death_stab = g0("death_stability")
+    pool_breadth = min(g0("champion_pool") / 12.0, 1.0)
+    latest_wr = raw.get("latest_patch_winrate")
+    latest_wr = win_rate if latest_wr is None else latest_wr
+    new_champ = g0("new_champ_score")
 
     is_sup = raw.get("position") == "sup"
     gd_field = raw.get("avg_gd10") if is_sup else raw.get("avg_gd15")
     cd_field = raw.get("avg_csd10") if is_sup else raw.get("avg_csd15")
-    xpd_field = raw.get("avg_xpd15") or 0
+    xpd_field = g0("avg_xpd15")
 
-    first_resource = raw.get("first_resource_rate", 0) or 0
-    first_tower    = raw.get("first_tower_rate", 0) or 0
+    first_resource = g0("first_resource_rate")
+    first_tower    = g0("first_tower_rate")
+
+    # LPL(partial) 缺分段差值字段，标记 laning 数据是否可用
+    laning_available = gd_field is not None
 
     # 这些是要做 z-score 的"二级原始值"，返给 05 步分组标准化
     return {
         # 团战
         "_kp": kp_rate * 100,
-        "_mitig": raw.get("avg_mitig") or 0,        # damagemitigatedperminute
+        "_mitig": g0("avg_mitig"),        # damagemitigatedperminute
         "_first_res": first_resource * 100,
-        # 线上
-        "_gd": gd_field or 0,
-        "_csd": cd_field or 0,
+        # 线上（缺失时给 None，05 步会用赛区基线兜底）
+        "_gd": gd_field if gd_field is not None else 0,
+        "_csd": cd_field if cd_field is not None else 0,
         "_xpd": xpd_field,
+        "_laning_ok": laning_available,
         # 长线
-        "_vspm": raw.get("avg_vspm") or 0,
-        "_wcpm": raw.get("avg_wcpm") or 0,
-        "_egshare": raw.get("avg_egshare") or 0,
+        "_vspm": g0("avg_vspm"),
+        "_wcpm": g0("avg_wcpm"),
+        "_egshare": g0("avg_egshare"),
         "_first_tow": first_tower * 100,
         # 操作
         "_kda": min(kda, 10),                       # 截顶避免极值
-        "_dpm": raw.get("avg_dpm") or 0,
-        "_dshare": raw.get("avg_damageshare") or 0,
+        "_dpm": g0("avg_dpm"),
+        "_dshare": g0("avg_damageshare"),
         "_multi": multikill,
         # 心态
         "_winrate": win_rate * 100,
@@ -134,3 +143,58 @@ def scores(d_values: Iterable[float], win_rate: float) -> tuple[int, int]:
     text = round(avg6 * 16 + win_rate * 40)
     season = round(text * (1 + (win_rate - 0.5) * 0.2))
     return text, season
+
+
+# ============================================================
+# 维度展示元数据（前端字段名 + 计算原理）
+# 第 3 点：六维图加上具体字段名
+# 第 7 点：雷达图维度端点计算原理
+# ============================================================
+DIM_META = {
+    "d_teamfight": {
+        "label": "团战决策",
+        "fields": "KP% · 减伤",
+        "formula": "0.4×击杀参与率(KP%) + 0.3×减伤(damagemitigatedperminute) + 0.3×首资源参与率",
+    },
+    "d_laning": {
+        "label": "线上压制",
+        "fields": "金差@15 · 补刀差 · 经验差",
+        "formula": "0.5×金币差@15(golddiffat15) + 0.3×补刀差@15(csdiffat15) + 0.2×经验差@15(xpdiffat15)",
+    },
+    "d_macro": {
+        "label": "长线运营",
+        "fields": "视野 · 控眼 · 经济占比",
+        "formula": "0.35×视野/分(vspm) + 0.25×控眼/分(wcpm) + 0.2×经济占比(earnedgoldshare) + 0.2×首塔率",
+    },
+    "d_mechanics": {
+        "label": "操作上限",
+        "fields": "KDA · DPM · 输出占比",
+        "formula": "0.4×KDA + 0.3×每分钟伤害(dpm) + 0.15×伤害占比(damageshare) + 0.15×多杀分",
+    },
+    "d_consistency": {
+        "label": "心态稳定",
+        "fields": "胜率 · 逆风胜率 · 死亡稳定",
+        "formula": "0.5×胜率(result) + 0.3×逆风局胜率(15分落后>1k仍获胜) + 0.2×死亡数稳定性",
+    },
+    "d_meta_adapt": {
+        "label": "版本适应",
+        "fields": "英雄池 · 新版本胜率",
+        "formula": "0.5×英雄池广度(champion) + 0.3×最近2补丁胜率(patch) + 0.2×新英雄使用分",
+    },
+}
+
+# 队伍维度的字段名（部分直读 team 行二级数据）
+TEAM_DIM_FIELDS = {
+    "d_teamfight": "选手均值 · 击杀节奏(ckpm)",
+    "d_laning":    "五人线上均值",
+    "d_macro":     "经济差GSPD · 黄金比率GPR · 控眼",
+    "d_mechanics": "五人操作均值",
+    "d_consistency":"胜率 · 选手均值",
+    "d_meta_adapt": "五人版本均值",
+}
+
+NORMALIZE_NOTE = (
+    "所有维度端点为 0–100 整数：同赛区、同位置选手分组后做 z-score 标准化，"
+    "再线性映射到 60±15（60 = 同位置赛区均值，即图中橙色基线）。"
+    "队伍的长线运营直接采用 Oracle's Elixir 现成的队伍级经济差(GSPD)与黄金比率(GPR)。"
+)

@@ -7,8 +7,10 @@ DB_PATH   = ROOT / "db" / "radar.db"
 SCHEMA    = ROOT / "db" / "schema.sql"
 CSV_PATH  = Path("/workspace/data/2026_LoL_esports_match_data_from_OraclesElixir.csv")
 
-# 默认仅处理这些一线赛区，避免小赛区数据稀疏导致 z-score 失真
-ALLOWED_LEAGUES = {"LPL","LCK","LEC","LCS","LCP","LJL","CBLOL","VCS","PCS","LLA","LCKC"}
+# 仅保留四大一线赛区（用户指定）
+# 注意：LPL 在本 CSV 为 partial 数据，缺 golddiffat15/csdiffat15/xpdiffat15，
+#       "线上压制"维度将降级为赛区基线（见 metrics.py）
+ALLOWED_LEAGUES = {"LCK","LPL","LCS","LEC"}
 ALLOWED_POSITIONS = {"top","jng","mid","bot","sup","team"}
 
 def db():

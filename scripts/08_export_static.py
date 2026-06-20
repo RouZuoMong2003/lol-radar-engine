@@ -6,6 +6,7 @@ import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 from _common import db, step_log, ROOT
+import metrics as M
 
 OUT = ROOT / "web" / "data"
 DIM_LABELS = {
@@ -21,16 +22,29 @@ def write(name, obj):
         json.dump(obj, f, ensure_ascii=False, separators=(",",":"))
     return p.stat().st_size
 
-def build_dims(rec, avg, ranks):
+def build_dims(rec, avg, ranks, is_team=False):
     out = []
     for key, label in DIM_LABELS.items():
-        d = {"key":key, "label":label,
+        meta = M.DIM_META.get(key, {})
+        fields = M.TEAM_DIM_FIELDS.get(key) if is_team else meta.get("fields", "")
+        d = {"key":key, "label":label, "fields":fields,
              "value": rec[key] if rec[key] is not None else 0,
              "avg":   round(avg[key]) if avg and avg[key] is not None else 60}
         if key in ranks:
             d["rank"], d["total"] = ranks[key]
         out.append(d)
     return out
+
+def formula_block(is_team=False):
+    """第 7 点：维度计算原理，导出到每个 RadarSubject。"""
+    items = []
+    for key, meta in M.DIM_META.items():
+        items.append({
+            "label": meta["label"],
+            "fields": (M.TEAM_DIM_FIELDS.get(key) if is_team else meta["fields"]),
+            "formula": meta["formula"],
+        })
+    return {"items": items, "note": M.NORMALIZE_NOTE}
 
 def main():
     with step_log("08_export_static") as st:
@@ -96,6 +110,7 @@ def main():
                                      "total":ps["total_in_pos"],"subtitle":"Season Rating"},
                 },
                 "dimensions": build_dims(ps, avg, ranks),
+                "formula_note": formula_block(is_team=False),
                 "raw":{
                     "team_name": tname,
                     "games":ps["games"],"wins":ps["wins"],"losses":ps["losses"],
@@ -137,7 +152,8 @@ def main():
                     "season_rating":{"value":ts["season_rating"],"rank":ts["r_league"],
                                      "total":ts["total_in_league"],"subtitle":"Season Rating"},
                 },
-                "dimensions": build_dims(ts, avg, ranks),
+                "dimensions": build_dims(ts, avg, ranks, is_team=True),
+                "formula_note": formula_block(is_team=True),
                 "raw":{
                     "games":ts["games"],"wins":ts["wins"],"losses":ts["losses"],
                     "win_rate":round(ts["win_rate"] or 0,3),

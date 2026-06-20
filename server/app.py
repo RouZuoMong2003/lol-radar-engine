@@ -17,6 +17,10 @@ def index():
 def assets(fn):
     return send_from_directory(WEB / "assets", fn)
 
+@app.get("/data/<path:fn>")
+def data_files(fn):
+    return send_from_directory(WEB / "data", fn)
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}

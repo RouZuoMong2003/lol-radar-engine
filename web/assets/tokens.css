@@ -1,0 +1,65 @@
+/* ============================================================
+   LoL Radar UI · Design Tokens（唯一真源）
+   规范见 /skills/lol-radar-ui/SKILL.md
+   手机为基准值，桌面(≥768px)在文件底部覆盖
+   ============================================================ */
+:root{
+  /* 色板 */
+  --bg:#F5EDE2;
+  --card:#FFFFFF;
+  --ink:#2C2C2C;
+  --ink-2:#6B6B6B;
+  --muted:#A8A39C;
+  --line:rgba(44,44,44,.08);
+  --blue:#3B5BA5;
+  --blue-fill:rgba(59,91,165,.18);
+  --orange:#D97757;
+  --orange-fill:rgba(217,119,87,.14);
+  --accent:#6B5BD6;
+  --accent-bg:#EDE8FF;
+  --red-bg:#FCE8E2;
+  --red-ink:#D97757;
+
+  /* 间距（8pt 基准） */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px;
+
+  /* 圆角 */
+  --r-sm:10px; --r-md:16px; --r-lg:20px; --r-pill:999px;
+
+  /* 字号（手机基准） */
+  --fs-cap:11px;
+  --fs-body:13px;
+  --fs-h2:16px;
+  --fs-num:28px;
+  --fs-display:36px;
+
+  /* 阴影 */
+  --shadow-card:0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.03);
+
+  /* 字体 */
+  --font-sans:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  --font-serif:"Cormorant Garamond","Source Han Serif",Georgia,serif;
+
+  /* 布局 */
+  --page-max:480px;
+  --grid-cols:1fr;
+}
+
+/* 平板 */
+@media (min-width:481px) and (max-width:767px){
+  :root{ --page-max:560px; }
+}
+
+/* 桌面：放大字号 + 双列 */
+@media (min-width:768px){
+  :root{
+    --fs-cap:12px;
+    --fs-body:14px;
+    --fs-h2:18px;
+    --fs-num:34px;
+    --fs-display:48px;
+    --page-max:980px;
+    --grid-cols:1.2fr 1fr;
+  }
+}

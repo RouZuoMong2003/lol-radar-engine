@@ -2,15 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LoL Radar Engine</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LoL Radar</title>
 <link rel="stylesheet" href="./assets/radar.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="page">
 
-  <!-- 顶部控制：左 segmented [选手|队伍] + 赛季 + 实体下拉 -->
+  <!-- 顶栏控制 -->
   <div class="controls">
     <div class="seg" id="seg-type">
       <button data-type="player" class="on">选手</button>
@@ -26,37 +26,43 @@
     <div class="tags" id="t-tags"></div>
   </div>
 
-  <!-- 双指标卡 -->
-  <div class="stat-row">
-    <div class="stat">
-      <div class="stat-head"><em id="s1-sub">—</em><span>综合评分</span></div>
-      <div class="stat-body"><div class="stat-num" id="s1-val">—</div><div class="stat-rank" id="s1-rank">#—</div></div>
-      <div class="stat-bar" id="s1-bar" style="width:50%"></div>
+  <!-- 双列布局：左雷达 / 右数据 -->
+  <div class="layout">
+    <div class="col-main">
+      <!-- 双指标卡 -->
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-head"><em id="s1-sub">—</em><span>综合评分</span></div>
+          <div class="stat-body"><div class="stat-num" id="s1-val">—</div><div class="stat-rank" id="s1-rank">#—</div></div>
+          <div class="stat-bar" id="s1-bar" style="width:50%"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-head"><em id="s2-sub">—</em><span>赛季评分</span></div>
+          <div class="stat-body"><div class="stat-num" id="s2-val">—</div><div class="stat-rank" id="s2-rank">#—</div></div>
+          <div class="stat-bar" id="s2-bar" style="width:50%"></div>
+        </div>
+      </div>
+      <!-- 雷达卡 -->
+      <div class="radar-card">
+        <div class="legend">
+          <span><i class="l-blue"></i><span id="lg-self">该选手</span></span>
+          <span><i class="l-orange"></i><span id="lg-avg">同位置均值</span></span>
+        </div>
+        <div class="radar-wrap"><canvas id="radar"></canvas></div>
+      </div>
     </div>
-    <div class="stat">
-      <div class="stat-head"><em id="s2-sub">—</em><span>赛季评分</span></div>
-      <div class="stat-body"><div class="stat-num" id="s2-val">—</div><div class="stat-rank" id="s2-rank">#—</div></div>
-      <div class="stat-bar" id="s2-bar" style="width:50%"></div>
+
+    <div class="col-side">
+      <!-- 数据网格 -->
+      <div class="meta-grid" id="meta-grid"></div>
     </div>
   </div>
 
-  <!-- 雷达卡 -->
-  <div class="radar-card">
-    <div class="legend">
-      <span><i class="l-blue"></i><span id="lg-self">该选手</span></span>
-      <span><i class="l-orange"></i><span id="lg-avg">同位置均值</span></span>
-    </div>
-    <div class="radar-wrap"><canvas id="radar"></canvas></div>
-    <div class="source">数据来源　Oracle's Elixir　·　LoL Radar Engine</div>
-  </div>
-
-  <!-- 详情区（player 与 team 显示不同字段） -->
-  <div class="meta-row" id="meta-row"></div>
-
-  <div class="footer">
-    <span id="f-id">—</span>
-    <span id="f-season">—</span>
-  </div>
+  <!-- 公式说明区（第 7 点：维度端点计算原理） -->
+  <details class="formula-note" id="formula-note">
+    <summary>维度计算原理</summary>
+    <div class="fn-body" id="fn-body"></div>
+  </details>
 
 </div>
 <script src="./assets/radar.js"></script>

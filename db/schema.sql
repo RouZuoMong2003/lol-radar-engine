@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS match_rows (
   date           TEXT,
   patch          TEXT,
   playoffs       INTEGER,
+  datacompleteness TEXT,
   player_id      TEXT,                 -- team 行 NULL
   player_name    TEXT,
   team_id        TEXT,
