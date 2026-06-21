@@ -1,4 +1,4 @@
-"""一键全量：依次跑 01→07，任一失败即停。"""
+"""一键全量：依次跑 01→08，任一失败即停。"""
 import subprocess, sys, time
 from pathlib import Path
 
@@ -10,6 +10,7 @@ STEPS = [
     "05_normalize.py",
     "06_aggregate_team.py",
     "07_league_avg.py",
+    "08_export_static.py",
 ]
 
 def main():

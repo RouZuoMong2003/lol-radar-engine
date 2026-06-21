@@ -137,9 +137,34 @@ def player_dimensions(raw: dict) -> dict:
         "_newchamp": new_champ * 100,
     }
 
-# 按位置差异化的维度权重表（详见 docs/PROMPT-position-and-anim.md）
-# 共用同一批二级字段输入(_kp/_gd_n/...)，仅各维度内部权重随定位调整。
-# 设计依据：不同分路职责不同 → 评判侧重不同。
+# 新版重构三维权重：一级字段 -> 二级指标 -> 同位置分位 -> 位置职责加权
+# 用于 Teamfight / Macro / Consistency，详见报告与 DIM_META 公开说明。
+REBUILT_DIMS = {"d_teamfight", "d_macro", "d_consistency"}
+
+TF_WEIGHTS = {
+    "top": {"participation":.20,"damage":.25,"survival":.25,"conversion":.15,"tempo":.15},
+    "jng": {"participation":.30,"damage":.15,"survival":.15,"conversion":.15,"tempo":.25},
+    "mid": {"participation":.23,"damage":.32,"survival":.10,"conversion":.20,"tempo":.15},
+    "bot": {"participation":.20,"damage":.42,"survival":.05,"conversion":.23,"tempo":.10},
+    "sup": {"participation":.38,"damage":.07,"survival":.25,"conversion":.10,"tempo":.20},
+}
+
+MACRO_WEIGHTS = {
+    "top": {"vision":.15,"objective":.15,"economy":.25,"lane_map":.30,"tempo":.15},
+    "jng": {"vision":.25,"objective":.35,"economy":.05,"lane_map":.10,"tempo":.25},
+    "mid": {"vision":.20,"objective":.18,"economy":.22,"lane_map":.25,"tempo":.15},
+    "bot": {"vision":.10,"objective":.15,"economy":.45,"lane_map":.20,"tempo":.10},
+    "sup": {"vision":.45,"objective":.30,"economy":.03,"lane_map":.02,"tempo":.20},
+}
+
+CONS_WEIGHTS = {"floor":.30,"median":.20,"volatility":.20,"death":.15,"loss":.15}
+
+def role_weights(kind: str, position: str):
+    if kind == "teamfight":
+        return TF_WEIGHTS.get(position, TF_WEIGHTS["mid"])
+    if kind == "macro":
+        return MACRO_WEIGHTS.get(position, MACRO_WEIGHTS["mid"])
+    return CONS_WEIGHTS
 POSITION_DIM_FORMULA = {
     # 上单：线上压制、操作、抗压(心态)为主；团战中等
     "top": {
@@ -238,11 +263,30 @@ def team_dimensions(team_agg: dict, players_avg: dict) -> dict:
 # --- 综合评分 ---
 
 def scores(d_values: Iterable[float], win_rate: float) -> tuple[int, int]:
-    """text_score & season_rating（SPEC §4.4）"""
-    avg6 = sum(d_values) / 6
-    text = round(avg6 * 16 + win_rate * 40)
-    season = round(text * (1 + (win_rate - 0.5) * 0.2))
-    return text, season
+    """新版顶部双评分。
+
+    Player Score：更偏"选手能力快照"，主要来自新版 6 维雷达：
+      - avg6：整体能力面积
+      - ceiling：最强两项，代表可被战术放大的上限
+      - floor：最低项，代表短板惩罚/下限
+      - win_rate：只给小幅赛季结果校正，避免强队胜率过度绑架个人能力
+
+    Season Rating：更偏"本赛季产出"，在 Player Score 基础上加入：
+      - 胜率结果系数
+      - Consistency(第 5 维)稳定性奖励/惩罚
+    """
+    vals = [float(v) for v in d_values]
+    if not vals:
+        return 0, 0
+    avg6 = sum(vals) / len(vals)
+    top2 = sorted(vals, reverse=True)[:2]
+    ceiling = sum(top2) / len(top2)
+    floor = min(vals)
+    consistency = vals[4] if len(vals) >= 5 else avg6
+
+    player_score = round(1000 + 5.8 * avg6 + 1.4 * ceiling + 0.8 * floor + 70 * win_rate)
+    season_rating = round(player_score * (0.92 + 0.16 * win_rate) + 1.6 * (consistency - 60))
+    return player_score, season_rating
 
 
 # ============================================================
@@ -253,8 +297,8 @@ def scores(d_values: Iterable[float], win_rate: float) -> tuple[int, int]:
 DIM_META = {
     "d_teamfight": {
         "label": "团战决策",
-        "fields": "KP% · 减伤",
-        "formula": "0.4×击杀参与率(KP%) + 0.3×减伤(damagemitigatedperminute) + 0.3×首资源参与率",
+        "fields": "参与 · 输出 · 生存 · 转化 · 节奏",
+        "formula": "新版：先构造 Participation=KP分位、Damage=0.55×DPM分位+0.45×输出占比分位、Survival=0.60×承伤/减伤分位+0.40×低死亡分位、Conversion=0.65×KDA分位+0.35×多杀分位、Tempo=(K+A)/分钟分位；再按分路职责加权。",
     },
     "d_laning": {
         "label": "线上压制",
@@ -263,8 +307,8 @@ DIM_META = {
     },
     "d_macro": {
         "label": "长线运营",
-        "fields": "视野 · 控眼 · 经济占比",
-        "formula": "0.35×视野/分(vspm) + 0.25×控眼/分(wcpm) + 0.2×经济占比(earnedgoldshare) + 0.2×首塔率",
+        "fields": "视野 · 目标 · 经济 · 线转图 · 节奏",
+        "formula": "新版：Vision=0.45×VSPM分位+0.25×WPM分位+0.30×WCPM分位；Objective=首血/小龙/先锋/大龙/一塔脚印分位；Economy=0.40×经济占比分位+0.30×CSPM分位+0.30×GD@15分位；LaneMap=0.45×GD@15+0.30×CSD@15+0.25×XPD@15 分位；Tempo=0.60×(K+A)/分钟分位+0.40×TeamKPM分位；再按分路职责加权。",
     },
     "d_mechanics": {
         "label": "操作上限",
@@ -273,8 +317,8 @@ DIM_META = {
     },
     "d_consistency": {
         "label": "心态稳定",
-        "fields": "胜率 · 逆风胜率 · 死亡稳定",
-        "formula": "0.5×胜率(result) + 0.3×逆风局胜率(15分落后>1k仍获胜) + 0.2×死亡数稳定性",
+        "fields": "高下限 · 中位影响 · 波动控制 · 死亡可靠 · 逆风韧性",
+        "formula": "新版：先按每局一级字段构造 Game Impact（位置内混合输出、对线、视野、参团、目标、存活与结果分位），再计算 HighFloor=Q25、MedianImpact=Q50、VolatilityControl=低IQR分位、DeathReliability=0.60×低死亡分位+0.40×死亡波动低分位、LossResilience=0.70×失利局Impact分位+0.30×胜率分位；最终 0.30×HighFloor+0.20×Median+0.20×Volatility+0.15×Death+0.15×Loss。",
     },
     "d_meta_adapt": {
         "label": "版本适应",
@@ -300,21 +344,27 @@ def dim_meta_for(position: str):
     overrides = {
         "top": {
             "d_laning":    "金差@15 · 补刀差(强权重)",
-            "d_consistency":"胜率 · 抗压逆风",
+            "d_teamfight": "参与 · 输出 · 生存 · 转化",
+            "d_macro":     "线转图 · 经济 · 视野",
+            "d_consistency":"高下限 · 低波动 · 死亡可靠",
         },
         "jng": {
-            "d_teamfight": "KP% · 首资源参与(强权重)",
-            "d_macro":     "视野 · 控眼 · 资源",
+            "d_teamfight": "参团节奏 · 资源团 · 生存",
+            "d_macro":     "目标脚印 · 视野 · 节奏",
             "d_laning":    "Gank前期差@15",
+            "d_consistency":"Impact下限 · 失利局韧性",
         },
         "bot": {
             "d_mechanics": "DPM · 输出占比(强权重)",
-            "d_macro":     "经济占比EGS(强权重) · 视野",
+            "d_teamfight": "输出 · 转化 · 参团",
+            "d_macro":     "经济转化 · 线转图 · 节奏",
+            "d_consistency":"死亡可靠 · 高下限",
         },
         "sup": {
-            "d_macro":     "视野vspm · 控眼wcpm(强权重)",
-            "d_teamfight": "KP%(强权重) · 减伤",
+            "d_macro":     "视野 · 控眼 · 目标脚印(强权重)",
+            "d_teamfight": "KP · 生存 · 节奏",
             "d_mechanics": "KDA · 参团(弱化输出)",
+            "d_consistency":"低死亡波动 · 失利局韧性",
         },
     }
     for dk, txt in overrides.get(position, {}).items():
@@ -322,7 +372,8 @@ def dim_meta_for(position: str):
     return base
 
 NORMALIZE_NOTE = (
-    "所有维度端点为 0–100 整数：同赛区、同位置选手分组后做 z-score 标准化，"
-    "再线性映射到 60±15（60 = 同位置赛区均值，即图中橙色基线）。"
-    "队伍的长线运营直接采用 Oracle's Elixir 现成的队伍级经济差(GSPD)与黄金比率(GPR)。"
+    "新版模型：Teamfight、Macro、Consistency 三维已升级为『一级字段 → 二级指标 → 同赛季同位置经验分位 → 分路职责权重』；"
+    "Laning、Mechanics、Adaptation 仍沿用同位置分位拉伸模型。所有端点为 0–100，同位置内部可比。"
+    "顶部 Player Score = 新版六维均值 + 最强两项上限 + 最低项下限 + 小幅胜率校正；"
+    "Season Rating 在 Player Score 基础上加入赛季胜率结果系数与 Consistency 稳定性修正。"
 )

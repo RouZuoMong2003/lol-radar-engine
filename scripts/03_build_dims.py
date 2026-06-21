@@ -10,7 +10,8 @@ TIER1 = {"LPL","LCK","LEC","LCS","LCP"}
 def main():
     with step_log("03_build_dims") as st:
         c = db()
-        # leagues
+        # 先删 seasons，再删 leagues；seasons.league_id 有外键指向 leagues
+        c.execute("DELETE FROM seasons")
         c.execute("DELETE FROM leagues")
         rows = c.execute("SELECT DISTINCT league_id FROM match_rows").fetchall()
         for r in rows:
