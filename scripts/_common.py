@@ -5,7 +5,26 @@ from pathlib import Path
 ROOT      = Path(__file__).resolve().parent.parent
 DB_PATH   = ROOT / "db" / "radar.db"
 SCHEMA    = ROOT / "db" / "schema.sql"
-CSV_PATH  = Path("/workspace/data/2026_LoL_esports_match_data_from_OraclesElixir.csv")
+
+# 源 CSV 解析优先级：
+#   1. 环境变量 OE_CSV（推荐：export OE_CSV=/path/to/xxx.csv）
+#   2. 项目内 data/ 目录下任意 *OraclesElixir*.csv
+#   3. 旧的本地开发路径（仅作兜底）
+_CSV_NAME = "2026_LoL_esports_match_data_from_OraclesElixir.csv"
+
+def _resolve_csv() -> Path:
+    env = os.environ.get("OE_CSV")
+    if env:
+        return Path(env).expanduser()
+    local = ROOT / "data" / _CSV_NAME
+    if local.exists():
+        return local
+    hits = sorted((ROOT / "data").glob("*OraclesElixir*.csv"))
+    if hits:
+        return hits[0]
+    return Path("/workspace/data") / _CSV_NAME
+
+CSV_PATH  = _resolve_csv()
 
 # 仅保留四大一线赛区（用户指定）
 # 注意：LPL 在本 CSV 为 partial 数据，缺 golddiffat15/csdiffat15/xpdiffat15，

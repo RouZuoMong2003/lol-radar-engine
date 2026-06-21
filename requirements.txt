@@ -1,0 +1,15 @@
+# LoL Radar Engine - Python dependencies
+# Python >= 3.10 recommended
+
+# Web API
+Flask>=3.0
+
+# Report generation (HTML -> PDF)
+weasyprint>=60
+pypdf>=4.0
+
+# Note:
+# - ETL pipeline (scripts/01..08) only uses the Python standard library
+#   (sqlite3, csv, statistics, pickle, math) — no extra deps required.
+# - weasyprint needs system libs: pango, cairo, gdk-pixbuf, and CJK fonts
+#   (e.g. fonts-noto-cjk) for the report PDF export.
