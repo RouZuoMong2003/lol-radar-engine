@@ -217,18 +217,6 @@ def dim_formula_for(position: str):
     """按位置返回维度权重表，未知位置回退 mid。"""
     return POSITION_DIM_FORMULA.get(position, POSITION_DIM_FORMULA["mid"])
 
-PLAYER_DIM_FORMULA = {
-    # dim_key: [(weight, raw_key), ...]
-    "d_teamfight":   [(0.40, "_kp"),       (0.30, "_mitig_n"),  (0.30, "_first_res")],
-    "d_laning":      [(0.50, "_gd_n"),     (0.30, "_csd_n"),    (0.20, "_xpd_n")],
-    "d_macro":       [(0.35, "_vspm_n"),   (0.25, "_wcpm_n"),
-                      (0.20, "_egshare_n"),(0.20, "_first_tow")],
-    "d_mechanics":   [(0.40, "_kda_n"),    (0.30, "_dpm_n"),
-                      (0.15, "_dshare_n"), (0.15, "_multi_n")],
-    "d_consistency": [(0.50, "_winrate"),  (0.30, "_comeback"), (0.20, "_dstab")],
-    "d_meta_adapt":  [(0.50, "_pool"),     (0.30, "_latest"),   (0.20, "_newchamp")],
-}
-
 # 哪些"原始项"需要做组内 z-score（标记 _n 后缀）
 ZSCORE_FIELDS = ["_mitig", "_gd", "_csd", "_xpd", "_vspm", "_wcpm",
                  "_egshare", "_kda", "_dpm", "_dshare", "_multi"]

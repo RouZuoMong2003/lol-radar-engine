@@ -3,6 +3,8 @@ db/*.db
 db/*.db-shm
 db/*.db-wal
 db/_stage_*.pkl
+server/*.db
+server/*.db.*
 
 # 源数据 CSV（体积大、版权归原始来源）——但保留 data/README.md
 data/*
@@ -16,6 +18,9 @@ __pycache__/
 .venv/
 venv/
 
+# 备份文件
+*.bak
+
 # 报告渲染中间产物
 reports/**/preview/
 
@@ -23,7 +28,15 @@ reports/**/preview/
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+# Node.js (仅在前端增加构建工具时)
+node_modules/
 
 # 日志/临时
 *.log
 *.tmp
+
+# Gemini/Agent workspace config
+.gemini/
+

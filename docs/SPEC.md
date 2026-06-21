@@ -175,9 +175,16 @@ def normalize(value, samples):
 
 ### 4.4 综合评分（顶部双卡）
 
-```
-text_score    = round(avg(d1..d6) * 16 + win_rate * 40)            # 0–1640
-season_rating = round(text_score * (1 + (win_rate - 0.5) * 0.2))
+> 以下公式与 `server/metrics.py:scores()` 一致，以代码为唯一真源。
+
+```python
+avg6      = mean(d1..d6)                      # 六维均值
+ceiling   = mean(top_2_dims)                   # 最强两项上限
+floor     = min(d1..d6)                        # 最低项下限
+consistency = d5                               # 心态稳定维度
+
+player_score  = round(1000 + 5.8*avg6 + 1.4*ceiling + 0.8*floor + 70*win_rate)
+season_rating = round(player_score * (0.92 + 0.16*win_rate) + 1.6*(consistency - 60))
 ```
 
 ---

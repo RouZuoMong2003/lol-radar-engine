@@ -1,70 +1,122 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>LoL Radar</title>
-<link rel="stylesheet" href="./assets/radar.css">
+<title>LoL Radar · 英雄联盟职业选手六维雷达</title>
+<meta name="description" content="基于 Oracle's Elixir 数据的英雄联盟职业选手 / 队伍六维能力雷达图。覆盖 LCK、LPL、LEC、LCS 四大赛区。">
+<meta property="og:title" content="LoL Radar · 英雄联盟职业选手六维雷达">
+<meta property="og:description" content="基于 Oracle's Elixir 数据的英雄联盟职业选手 / 队伍六维能力雷达图">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#fdfbf7">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/css/tokens.css">
+<link rel="stylesheet" href="./assets/css/components.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="page">
 
-  <!-- 顶栏控制 -->
-  <div class="controls">
-    <div class="seg" id="seg-type">
-      <button data-type="player" class="on">选手</button>
-      <button data-type="team">队伍</button>
-    </div>
-    <select id="sel-season"></select>
-    <select id="sel-entity"></select>
-  </div>
+  <!-- 选手战力海报卡片 (桌面端作为三栏式控制台) -->
+  <div class="poster-card" id="poster-card">
 
-  <!-- 标题 + 标签 -->
-  <div class="header">
-    <div class="title" id="t-name">—</div>
-    <div class="tags" id="t-tags"></div>
-  </div>
-
-  <!-- 双列布局：左雷达 / 右数据 -->
-  <div class="layout">
-    <div class="col-main">
-      <!-- 双指标卡 -->
-      <div class="stat-row">
-        <div class="stat">
-          <div class="stat-head"><em id="s1-sub">—</em><span>综合评分</span></div>
-          <div class="stat-body"><div class="stat-num" id="s1-val">—</div><div class="stat-rank" id="s1-rank">#—</div></div>
-          <div class="stat-bar" id="s1-bar" style="width:50%"></div>
+    <!-- 1. 左侧边栏 -->
+    <aside class="sidebar-col fade-in">
+      <!-- 顶栏控制区 -->
+      <nav class="controls" id="controls" role="navigation" aria-label="数据筛选">
+        <div class="seg" id="seg-type" role="tablist" aria-label="数据类型">
+          <button data-type="player" class="on" role="tab" aria-selected="true" id="tab-player">选手</button>
+          <button data-type="team" role="tab" aria-selected="false" id="tab-team">队伍</button>
         </div>
-        <div class="stat">
-          <div class="stat-head"><em id="s2-sub">—</em><span>赛季评分</span></div>
-          <div class="stat-body"><div class="stat-num" id="s2-val">—</div><div class="stat-rank" id="s2-rank">#—</div></div>
-          <div class="stat-bar" id="s2-bar" style="width:50%"></div>
+        <select id="sel-season" aria-label="选择赛季"></select>
+        <select id="sel-entity" aria-label="选择选手或队伍"></select>
+        <button class="theme-toggle" id="theme-toggle" aria-label="切换主题" title="切换亮色/暗色主题">🌙</button>
+      </nav>
+
+      <!-- 选手/队伍名称 + 标签 -->
+      <header class="header">
+        <h1 class="title" id="t-name">—</h1>
+        <div class="tags" id="t-tags"></div>
+      </header>
+
+      <!-- 双指标战力卡 (垂直排列) -->
+      <div class="stat-column">
+        <div class="stat" id="stat-1">
+          <div class="stat-head"><em id="s1-sub">—</em></div>
+          <div class="stat-body">
+            <div class="stat-num" id="s1-val">—</div>
+            <div class="stat-rank" id="s1-rank">#—</div>
+          </div>
+          <div class="stat-bar" id="s1-bar" style="width:0%"></div>
+        </div>
+        <div class="stat" id="stat-2">
+          <div class="stat-head"><em id="s2-sub">—</em></div>
+          <div class="stat-body">
+            <div class="stat-num" id="s2-val">—</div>
+            <div class="stat-rank" id="s2-rank">#—</div>
+          </div>
+          <div class="stat-bar" id="s2-bar" style="width:0%"></div>
         </div>
       </div>
-      <!-- 雷达卡 -->
+
+      <!-- 计算公式折叠块 -->
+      <details class="formula-note" id="formula-note">
+        <summary>📐 维度计算原理</summary>
+        <div class="fn-body" id="fn-body"></div>
+      </details>
+    </aside>
+
+    <!-- 2. 中间核心区 (超大雷达图) -->
+    <main class="center-col fade-in" style="animation-delay:.05s">
       <div class="radar-card">
-        <div class="legend">
-          <span><i class="l-blue"></i><span id="lg-self">该选手</span></span>
-          <span><i class="l-orange"></i><span id="lg-avg">同位置均值</span></span>
+        <div class="radar-header">
+          <div class="legend">
+            <span><i class="l-blue"></i><span id="lg-self">该选手</span></span>
+            <span><i class="l-orange"></i><span id="lg-avg">同位置均值</span></span>
+          </div>
+          <span class="radar-subtitle">主客观混合雷达图</span>
         </div>
-        <div class="radar-wrap"><canvas id="radar"></canvas><canvas id="radar-fx"></canvas></div>
+        <div class="radar-wrap">
+          <canvas id="radar"></canvas>
+          <canvas id="radar-fx"></canvas>
+        </div>
       </div>
-    </div>
+    </main>
 
-    <div class="col-side">
-      <!-- 数据网格 -->
-      <div class="meta-grid" id="meta-grid"></div>
-    </div>
-  </div>
+    <!-- 3. 右侧数据区 (排行榜 + 二级横条详情) -->
+    <aside class="right-col fade-in" style="animation-delay:.1s">
+      <!-- 排行榜 -->
+      <div class="ranking-card">
+        <h3 class="ranking-title" id="ranking-title">评分排行</h3>
+        <div class="ranking-list" id="ranking-list"></div>
+      </div>
 
-  <!-- 公式说明区（第 7 点：维度端点计算原理） -->
-  <details class="formula-note" id="formula-note">
-    <summary>维度计算原理</summary>
-    <div class="fn-body" id="fn-body"></div>
-  </details>
+      <!-- 二级指标长方形列表 -->
+      <div class="secondary-card">
+        <h3 class="secondary-title">二级指标详情</h3>
+        <div class="secondary-list" id="meta-grid"></div>
+      </div>
+    </aside>
 
+  </div> <!-- .poster-card -->
+
+</div> <!-- .page -->
+
+<!-- 加载遮罩 -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-spinner"></div>
 </div>
-<script src="./assets/radar.js"></script>
+
+<!-- 错误提示 -->
+<div class="error-toast" id="error-toast"></div>
+
+<!-- JS 模块按依赖顺序加载 -->
+<script src="./assets/js/api.js"></script>
+<script src="./assets/js/store.js"></script>
+<script src="./assets/js/chart.js"></script>
+<script src="./assets/js/ui.js"></script>
+<script src="./assets/js/app.js"></script>
 </body>
 </html>
