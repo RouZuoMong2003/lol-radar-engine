@@ -61,7 +61,7 @@ const API = {
     await this.init();
     if (this._isStatic) {
       const safeSeasonId = this._safePath(seasonId);
-      const safeEntityId = this._safePath(entityId.split(':').pop() || entityId);
+      const safeEntityId = this._safePath(entityId);
       return this._fetchJSON(`./data/season/${safeSeasonId}/${type}/${safeEntityId}.json`);
     }
     const endpoint = type === 'player' ? '/api/player' : '/api/team';
